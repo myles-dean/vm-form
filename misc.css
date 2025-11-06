@@ -1,0 +1,57 @@
+
+.thumbnail-option.radio-selected .thumbnail-card {
+    background: rgba(56, 112, 236, 0.2);
+    border-color: #3870ec;
+    box-shadow: 0 5px 20px rgba(56, 112, 236, 0.3);
+}
+
+.thumbnail-option.radio-selected .thumbnail-label {
+    color: #3870ec;
+}
+
+.haze-option.radio-selected .haze-card {
+    background: rgba(56, 112, 236, 0.2);
+    border-color: #3870ec;
+    box-shadow: 0 5px 20px rgba(56, 112, 236, 0.3);
+}
+
+.haze-option.radio-selected .haze-label {
+    color: #3870ec;
+}
+
+.haze-option-center.radio-selected .haze-card-center {
+    background: rgba(56, 112, 236, 0.2);
+    border-color: #3870ec;
+}
+
+/* Fix for Webflow's nested label structure */
+.thumbnail-option {
+    cursor: pointer;
+    user-select: none;
+}
+
+.haze-option,
+.haze-option-center {
+    cursor: pointer;
+    user-select: none;
+}
+
+/* Ensure the hidden radios don't interfere */
+.thumbnail-option input[type="radio"],
+.haze-option input[type="radio"],
+.haze-option-center input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+body.w-editor .question-slide {
+    display: block !important;
+    margin-bottom: 1em !important;
+    animation: none !important;
+}
+
+body.w-editor .question-slide.active,
+body.w-editor .question-slide.prev {
+    display: block !important;
+}
