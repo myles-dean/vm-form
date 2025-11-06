@@ -1,5 +1,4 @@
 
-// Navigation Manager Class
 window.NavigationManager = class NavigationManager {
     constructor(instance) {
         this.instance = instance;
@@ -274,39 +273,75 @@ window.NavigationManager = class NavigationManager {
 window.VisualManager = class VisualManager {
     constructor(instance) {
         this.instance = instance;
+        this.preloadedStyles = new Set();
+        this.preloadedImages = new Map();
+        this.preloadedVideos = new Set();
+        this.imageKeys = ['bright', 'dimmed', 'dark', 'color', 'white', 'calm', 'noHaze', 'haze'];
+        this.videoKeys = ['subtle', 'dynamic'];
     }
 
-    updateDynamicVisuals() {
-        if (!this.instance.selectedStyle || this.instance.currentQuestion < 3 || this.instance.currentQuestion > 6) {
+    updateDynamicVisuals(styleKey = this.instance.selectedStyle) {
+        if (!styleKey) {
             return;
         }
 
-        const styleAssets = window.visualAssets[this.instance.selectedStyle];
+        const styleAssets = window.visualAssets[styleKey];
         if (!styleAssets) return;
 
-        switch (this.instance.currentQuestion) {
-            case 3:
-                this.setBackgroundImage(document.getElementById('bright-visual'), styleAssets.bright);
-                this.setBackgroundImage(document.getElementById('dim-visual'), styleAssets.dimmed);
-                this.setBackgroundImage(document.getElementById('dark-visual'), styleAssets.dark);
-                break;
-                
-            case 4:
-                this.setBackgroundImage(document.getElementById('color-visual'), styleAssets.color);
-                this.setBackgroundImage(document.getElementById('white-visual'), styleAssets.white);
-                break;
-                
-            case 5:
-                this.setBackgroundImage(document.getElementById('calm-visual'), styleAssets.calm);
-                this.updateBunnyPlayer('subtle-container', styleAssets.subtle);
-                this.updateBunnyPlayer('dynamic-container', styleAssets.dynamic);
-                break;
-                
-            case 6:
-                this.setBackgroundImage(document.getElementById('no-haze-visual'), styleAssets.noHaze);
-                this.setBackgroundImage(document.getElementById('haze-visual'), styleAssets.haze);
-                break;
+        this.preloadStyleAssets(styleKey, styleAssets);
+
+        this.setBackgroundImage(document.getElementById('bright-visual'), styleAssets.bright);
+        this.setBackgroundImage(document.getElementById('dim-visual'), styleAssets.dimmed);
+        this.setBackgroundImage(document.getElementById('dark-visual'), styleAssets.dark);
+
+        this.setBackgroundImage(document.getElementById('color-visual'), styleAssets.color);
+        this.setBackgroundImage(document.getElementById('white-visual'), styleAssets.white);
+
+        this.setBackgroundImage(document.getElementById('calm-visual'), styleAssets.calm);
+        this.updateBunnyPlayer('subtle-container', styleAssets.subtle);
+        this.updateBunnyPlayer('dynamic-container', styleAssets.dynamic);
+
+        this.setBackgroundImage(document.getElementById('no-haze-visual'), styleAssets.noHaze);
+        this.setBackgroundImage(document.getElementById('haze-visual'), styleAssets.haze);
+    }
+
+    preloadStyleAssets(styleKey, styleAssets = window.visualAssets[styleKey]) {
+        if (!styleAssets || this.preloadedStyles.has(styleKey)) {
+            return;
         }
+
+        const retainedImages = [];
+        this.imageKeys.forEach((key) => {
+            const url = styleAssets[key];
+            if (!url) return;
+
+            const img = new Image();
+            img.src = url;
+            retainedImages.push(img);
+        });
+
+        if (retainedImages.length) {
+            this.preloadedImages.set(styleKey, retainedImages);
+        }
+
+        this.videoKeys.forEach((key) => {
+            const url = styleAssets[key];
+            if (!url) return;
+
+            if (this.preloadedVideos.has(url)) return;
+
+            const head = document.head || document.getElementsByTagName('head')[0];
+            if (!head) return;
+
+            const link = document.createElement('link');
+            link.rel = 'preload';
+            link.as = 'video';
+            link.href = url;
+            head.appendChild(link);
+            this.preloadedVideos.add(url);
+        });
+
+        this.preloadedStyles.add(styleKey);
     }
 
     setBackgroundImage(element, imageUrl) {
@@ -320,19 +355,21 @@ window.VisualManager = class VisualManager {
     updateBunnyPlayer(containerId, videoUrl) {
         const container = document.getElementById(containerId);
         if (!container || !videoUrl) return;
-        
+
         const bunnyPlayer = container.querySelector('.bunny-player');
         if (!bunnyPlayer) return;
-        
+
         bunnyPlayer.setAttribute('data-player-src', videoUrl);
-        
+
         const videoElement = bunnyPlayer.querySelector('video');
         if (videoElement) {
             const wasPlaying = !videoElement.paused;
             videoElement.src = videoUrl;
-            
-            if (wasPlaying) {
-                videoElement.play().catch(e => console.log('Auto-play prevented:', e));
+            videoElement.load();
+
+            const shouldAutoplay = wasPlaying || bunnyPlayer.dataset.playerAutoplay === 'true';
+            if (shouldAutoplay) {
+                videoElement.play().catch(() => {});
             }
         }
     }
