@@ -5,22 +5,29 @@ window.GoalManager = class GoalManager {
 
     setupGoalRatings() {
         document.querySelectorAll('.rating-btn-large').forEach(btn => {
-            btn.addEventListener('click', () => {
+            const input = btn.querySelector('input[type="radio"]');
+            if (!input) return;
+
+            const handleSelection = () => {
+                if (!input.checked) return;
+
                 const goal = btn.dataset.goal;
                 const rating = btn.dataset.rating;
-                
+
                 this.instance.formData.goals[goal] = rating;
-                
+
                 const currentQuestionSeq = this.instance.sequentialQuestions[this.instance.currentQuestion];
                 if (!currentQuestionSeq || currentQuestionSeq.type !== 'goals') return;
-                
+
                 if (currentQuestionSeq.currentIndex < currentQuestionSeq.total - 1) {
                     currentQuestionSeq.currentIndex++;
                     this.instance.showSequentialStep(this.instance.currentQuestion, currentQuestionSeq.currentIndex);
                 } else {
                     this.instance.navigationManager.nextQuestion();
                 }
-            });
+            };
+
+            input.addEventListener('change', handleSelection);
         });
     }
 
