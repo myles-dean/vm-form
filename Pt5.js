@@ -1,4 +1,3 @@
-
 class TypeformIntake {
     constructor() {
         this.currentQuestion = 0;
@@ -86,7 +85,8 @@ class TypeformIntake {
         this.navigationManager.updateProgress();
         this.navigationManager.updateCounter();
         this.navigationManager.checkNavigation();
-        
+        this.visualManager.updateDynamicVisuals();
+
         const startBtn = document.getElementById('startBtn');
         if (startBtn) {
             startBtn.addEventListener('click', () => {
@@ -95,7 +95,7 @@ class TypeformIntake {
         }
     }
 
-     setupStyleSelection() {
+    setupStyleSelection() {
         document.querySelectorAll('input[name="lightingStyle"]').forEach(input => {
             input.addEventListener('change', (e) => {
                 const target = e.target;
@@ -107,9 +107,9 @@ class TypeformIntake {
                 }
 
                 this.selectedStyle = style;
-                this.formData.lightingStyle = target.value;
+                this.formData.lightingStyle = style;
 
-                this.visualManager.updateDynamicVisuals();
+                this.visualManager.updateDynamicVisuals(style);
             });
         });
     }
