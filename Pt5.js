@@ -1,5 +1,4 @@
 
-// Main TypeformIntake Class
 class TypeformIntake {
     constructor() {
         this.currentQuestion = 0;
@@ -96,11 +95,21 @@ class TypeformIntake {
         }
     }
 
-    setupStyleSelection() {
+     setupStyleSelection() {
         document.querySelectorAll('input[name="lightingStyle"]').forEach(input => {
             input.addEventListener('change', (e) => {
-                this.selectedStyle = e.target.dataset.style;
-                this.formData.lightingStyle = e.target.value;
+                const target = e.target;
+                const styleSource = target.dataset.style ? target : target.closest('[data-style]');
+                const style = styleSource ? styleSource.dataset.style : target.value;
+
+                if (!style) {
+                    return;
+                }
+
+                this.selectedStyle = style;
+                this.formData.lightingStyle = target.value;
+
+                this.visualManager.updateDynamicVisuals();
             });
         });
     }
