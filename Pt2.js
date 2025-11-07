@@ -1,4 +1,3 @@
-
 window.NavigationManager = class NavigationManager {
     constructor(instance) {
         this.instance = instance;
@@ -278,6 +277,9 @@ window.VisualManager = class VisualManager {
         this.preloadedVideos = new Set();
         this.imageKeys = ['bright', 'dimmed', 'dark', 'color', 'white', 'calm', 'noHaze', 'haze'];
         this.videoKeys = ['subtle', 'dynamic'];
+        this.initializedBunnyPlayers = new WeakSet();
+        this.hlsInstances = new WeakMap();
+        this.hlsLibraryPromise = null;
     }
 
     updateDynamicVisuals(styleKey = this.instance.selectedStyle) {
@@ -288,6 +290,7 @@ window.VisualManager = class VisualManager {
         const styleAssets = window.visualAssets[styleKey];
         if (!styleAssets) return;
 
+        this.initializeBunnyPlayers();
         this.preloadStyleAssets(styleKey, styleAssets);
 
         this.setBackgroundImage(document.getElementById('bright-visual'), styleAssets.bright);
@@ -359,21 +362,226 @@ window.VisualManager = class VisualManager {
         const bunnyPlayer = container.querySelector('.bunny-player');
         if (!bunnyPlayer) return;
 
+        this.setupBunnyPlayer(bunnyPlayer);
         bunnyPlayer.setAttribute('data-player-src', videoUrl);
+        bunnyPlayer.dataset.playerActivated = 'true';
+        bunnyPlayer.setAttribute('data-player-status', 'loading');
 
         const videoElement = bunnyPlayer.querySelector('video');
-        if (videoElement) {
-            const wasPlaying = !videoElement.paused;
-            videoElement.src = videoUrl;
-            videoElement.load();
+        if (!videoElement) {
+            return;
+        }
 
-            const shouldAutoplay = wasPlaying || bunnyPlayer.dataset.playerAutoplay === 'true';
+        const wasPlaying = !videoElement.paused && !videoElement.ended;
+        const userAutoplayPreference = bunnyPlayer.dataset.playerAutoplay === 'true';
+        const shouldAutoplay = wasPlaying || userAutoplayPreference;
+
+        bunnyPlayer.dataset.playerAutoplay = shouldAutoplay ? 'true' : 'false';
+
+        bunnyPlayer.dataset.playerProgrammaticPause = 'true';
+        try {
+            videoElement.pause();
+        } catch (e) {
+            console.warn('Unable to pause Bunny player before swapping source', e);
+        }
+
+        // Ensure the pause handler recognises this pause as programmatic by
+        // keeping the flag in place until the current task completes.
+        setTimeout(() => {
+            delete bunnyPlayer.dataset.playerProgrammaticPause;
+        }, 0);
+
+        const handleAutoplayResult = () => {
             if (shouldAutoplay) {
-                videoElement.play().catch(() => {});
+                videoElement.play()
+                    .then(() => bunnyPlayer.setAttribute('data-player-status', 'playing'))
+                    .catch(() => bunnyPlayer.setAttribute('data-player-status', 'ready'));
+            } else if (videoElement.paused) {
+                bunnyPlayer.setAttribute('data-player-status', 'ready');
             }
+        };
+
+        if (this.supportsNativeHls(videoElement)) {
+            this.detachHls(videoElement);
+            this.setNativeVideoSource(videoElement, videoUrl, shouldAutoplay, handleAutoplayResult);
+            return;
+        }
+
+        this.detachHls(videoElement);
+
+        this.loadHlsLibrary()
+            .then((HlsClass) => {
+                if (!HlsClass || !HlsClass.isSupported()) {
+                    this.setNativeVideoSource(videoElement, videoUrl, shouldAutoplay, handleAutoplayResult);
+                    return;
+                }
+
+                const hls = new HlsClass();
+                this.hlsInstances.set(videoElement, hls);
+
+                const onManifestParsed = () => {
+                    hls.off(HlsClass.Events.MANIFEST_PARSED, onManifestParsed);
+                    handleAutoplayResult();
+                };
+
+                hls.on(HlsClass.Events.ERROR, (event, data) => {
+                    if (data && data.fatal) {
+                        hls.destroy();
+                        this.hlsInstances.delete(videoElement);
+                        this.setNativeVideoSource(videoElement, videoUrl, shouldAutoplay, handleAutoplayResult);
+                    }
+                });
+
+                hls.on(HlsClass.Events.MANIFEST_PARSED, onManifestParsed);
+
+                videoElement.removeAttribute('src');
+                try {
+                    videoElement.load();
+                } catch (e) {
+                    console.warn('Unable to reset Bunny video element before attaching Hls.js', e);
+                }
+
+                hls.loadSource(videoUrl);
+                hls.attachMedia(videoElement);
+            })
+            .catch(() => {
+                this.detachHls(videoElement);
+                this.setNativeVideoSource(videoElement, videoUrl, shouldAutoplay, handleAutoplayResult);
+            });
+    }
+
+    initializeBunnyPlayers() {
+        document.querySelectorAll('.bunny-player').forEach((player) => this.setupBunnyPlayer(player));
+    }
+
+    setupBunnyPlayer(player) {
+        if (!player || this.initializedBunnyPlayers.has(player)) {
+            return;
+        }
+
+        const videoElement = player.querySelector('video');
+        if (!videoElement) {
+            return;
+        }
+
+        if (!player.dataset.playerAutoplay) {
+            player.dataset.playerAutoplay = 'false';
+        }
+
+        const setStatus = (status) => {
+            if (status) {
+                player.setAttribute('data-player-status', status);
+            }
+        };
+
+        videoElement.addEventListener('playing', () => {
+            setStatus('playing');
+            player.dataset.playerAutoplay = 'true';
+        });
+        videoElement.addEventListener('pause', () => {
+            setStatus('paused');
+            if (player.dataset.playerProgrammaticPause !== 'true') {
+                player.dataset.playerAutoplay = 'false';
+            }
+        });
+        videoElement.addEventListener('waiting', () => setStatus('loading'));
+        videoElement.addEventListener('canplay', () => {
+            if (videoElement.paused) {
+                setStatus(player.dataset.playerAutoplay === 'true' ? 'ready' : 'paused');
+            }
+        });
+        videoElement.addEventListener('loadeddata', () => {
+            if (player.dataset.playerAutoplay === 'true') {
+                videoElement.play().catch(() => {});
+            } else if (videoElement.paused) {
+                setStatus('ready');
+            }
+        });
+
+        this.initializedBunnyPlayers.add(player);
+    }
+
+    supportsNativeHls(videoElement) {
+        if (!videoElement || typeof videoElement.canPlayType !== 'function') {
+            return false;
+        }
+
+        return ['application/vnd.apple.mpegURL', 'application/x-mpegURL']
+            .some((type) => {
+                const result = videoElement.canPlayType(type);
+                return result === 'probably' || result === 'maybe';
+            });
+    }
+
+    loadHlsLibrary() {
+        if (window.Hls) {
+            return Promise.resolve(window.Hls);
+        }
+
+        if (!this.hlsLibraryPromise) {
+            this.hlsLibraryPromise = new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.12/dist/hls.min.js';
+                script.async = true;
+                script.onload = () => resolve(window.Hls || null);
+                script.onerror = (error) => reject(error);
+                document.head.appendChild(script);
+            }).catch((error) => {
+                console.error('Failed to load Hls.js library', error);
+                return null;
+            });
+        }
+
+        return this.hlsLibraryPromise;
+    }
+
+    detachHls(videoElement) {
+        const hls = this.hlsInstances.get(videoElement);
+        if (hls) {
+            hls.destroy();
+            this.hlsInstances.delete(videoElement);
+        }
+    }
+
+    setNativeVideoSource(videoElement, videoUrl, shouldAutoplay, handleAutoplayResult) {
+        const currentSrc = videoElement.getAttribute('src');
+
+        if (currentSrc !== videoUrl) {
+            videoElement.removeAttribute('src');
+            try {
+                videoElement.load();
+            } catch (e) {
+                console.warn('Unable to reset Bunny video element before updating source', e);
+            }
+            videoElement.src = videoUrl;
+        }
+
+        try {
+            videoElement.currentTime = 0;
+        } catch (e) {
+            console.warn('Unable to reset Bunny video playback position', e);
+        }
+
+        const onLoadedData = () => {
+            videoElement.removeEventListener('loadeddata', onLoadedData);
+            handleAutoplayResult();
+        };
+
+        videoElement.addEventListener('loadeddata', onLoadedData, { once: true });
+        try {
+            videoElement.load();
+        } catch (e) {
+            console.warn('Unable to load Bunny video source', e);
+        }
+
+        if (shouldAutoplay) {
+            videoElement.play().catch(() => {
+                /* Autoplay may be blocked; status will update in loadeddata handler */
+            });
         }
     }
 };
+
 
 // Dimension Manager Class
 window.DimensionManager = class DimensionManager {
