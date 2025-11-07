@@ -206,10 +206,18 @@ window.EventManager = class EventManager {
         const backBtn = document.getElementById('backBtn');
 
         if (nextBtn) {
-            nextBtn.addEventListener('click', () => this.instance.navigationManager.nextQuestion());
+            nextBtn.setAttribute('type', 'button');
+            nextBtn.addEventListener('click', (event) => {
+                event.preventDefault();
+                this.instance.navigationManager.nextQuestion();
+            });
         }
         if (backBtn) {
-            backBtn.addEventListener('click', () => this.instance.navigationManager.previousQuestion());
+            backBtn.setAttribute('type', 'button');
+            backBtn.addEventListener('click', (event) => {
+                event.preventDefault();
+                this.instance.navigationManager.previousQuestion();
+            });
         }
     }
 
