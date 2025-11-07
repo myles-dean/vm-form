@@ -76,39 +76,100 @@ window.StorageManager = class StorageManager {
     loadSavedData() {
         try {
             const savedData = localStorage.getItem('churchLightingForm');
-            const savedPosition = localStorage.getItem('churchLightingPosition');
-            
-            if (savedData) {
-                const parsedData = JSON.parse(savedData);
-                this.instance.formData = { ...this.instance.formData, ...parsedData };
-                console.log('Loaded saved form data');
+            if (!savedData) {
+                localStorage.removeItem('churchLightingPosition');
+                return;
             }
-            
-            if (savedPosition && savedPosition !== '0') {
-                const position = parseInt(savedPosition);
-                if (position > 0 && position <= this.instance.totalQuestions) {
-                    if (confirm('Would you like to continue where you left off?')) {
-                        this.instance.currentQuestion = position;
-                        const currentSlide = document.querySelector('.question-slide.active');
-                        if (currentSlide) currentSlide.classList.remove('active');
-                        const targetSlide = document.querySelector(`.question-slide[data-question="${position}"]`);
-                        if (targetSlide) targetSlide.classList.add('active');
-                        this.instance.navigationManager.updateProgress();
-                        this.instance.navigationManager.updateCounter();
-                        this.instance.navigationManager.checkNavigation();
+
+            const parsedData = JSON.parse(savedData);
+            if (!parsedData || typeof parsedData !== 'object') {
+                localStorage.removeItem('churchLightingPosition');
+                return;
+            }
+
+            this.instance.formData = { ...this.instance.formData, ...parsedData };
+            this.restoreFormInputs(parsedData);
+        } catch (error) {
+            console.error('Error loading saved data:', error);
+        } finally {
+            try {
+                localStorage.removeItem('churchLightingPosition');
+            } catch (cleanupError) {
+                console.warn('Unable to clear stored question position', cleanupError);
+            }
+        }
+    }
+
+    restoreFormInputs(savedData) {
+        if (!savedData || typeof savedData !== 'object') {
+            return;
+        }
+
+        Object.entries(savedData).forEach(([key, value]) => {
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                this.restoreFormInputs(value);
+                return;
+            }
+
+            const matchingInputs = document.querySelectorAll(`[name="${key}"]`);
+            let valueApplied = false;
+
+            if (matchingInputs.length) {
+                matchingInputs.forEach((input) => {
+                    if (input.type === 'radio') {
+                        const shouldCheck = input.value === String(value);
+                        if (shouldCheck && !input.checked) {
+                            input.checked = true;
+                            input.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                        valueApplied = valueApplied || shouldCheck;
+                    } else if (input.type === 'checkbox') {
+                        let shouldCheck;
+                        if (Array.isArray(value)) {
+                            shouldCheck = value.includes(input.value);
+                        } else if (typeof value === 'boolean') {
+                            shouldCheck = value;
+                        } else {
+                            shouldCheck = input.value === String(value);
+                        }
+
+                        if (typeof shouldCheck === 'boolean' && input.checked !== shouldCheck) {
+                            input.checked = shouldCheck;
+                            input.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+
+                        valueApplied = true;
+                    } else if (input.type !== 'file') {
+                        const newValue = value == null ? '' : String(value);
+                        if (input.value !== newValue) {
+                            input.value = newValue;
+                            input.dispatchEvent(new Event('input', { bubbles: true }));
+                            input.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                        valueApplied = true;
+                    }
+                });
+            }
+
+            if (!valueApplied) {
+                const elementById = document.getElementById(key);
+                if (elementById && 'value' in elementById && elementById.type !== 'file') {
+                    const newValue = value == null ? '' : String(value);
+                    if (elementById.value !== newValue) {
+                        elementById.value = newValue;
+                        elementById.dispatchEvent(new Event('input', { bubbles: true }));
+                        elementById.dispatchEvent(new Event('change', { bubbles: true }));
                     }
                 }
             }
-        } catch (error) {
-            console.error('Error loading saved data:', error);
-        }
+        });
     }
 
     saveCurrentData() {
         try {
             const currentSlide = document.querySelector('.question-slide.active');
             if (!currentSlide) return;
-            
+
             const currentInputs = currentSlide.querySelectorAll('input, textarea, select');
             currentInputs.forEach(input => {
                 if (input.type === 'radio' || input.type === 'checkbox') {
@@ -119,9 +180,8 @@ window.StorageManager = class StorageManager {
                     this.instance.formData[input.name || input.id] = input.value;
                 }
             });
-            
+
             localStorage.setItem('churchLightingForm', JSON.stringify(this.instance.formData));
-            localStorage.setItem('churchLightingPosition', this.instance.currentQuestion.toString());
         } catch (error) {
             console.error('Error saving form data:', error);
         }
@@ -149,10 +209,18 @@ window.EventManager = class EventManager {
         const backBtn = document.getElementById('backBtn');
 
         if (nextBtn) {
-            nextBtn.addEventListener('click', () => this.instance.navigationManager.nextQuestion());
+            nextBtn.setAttribute('type', 'button');
+            nextBtn.addEventListener('click', (event) => {
+                event.preventDefault();
+                this.instance.navigationManager.nextQuestion();
+            });
         }
         if (backBtn) {
-            backBtn.addEventListener('click', () => this.instance.navigationManager.previousQuestion());
+            backBtn.setAttribute('type', 'button');
+            backBtn.addEventListener('click', (event) => {
+                event.preventDefault();
+                this.instance.navigationManager.previousQuestion();
+            });
         }
     }
 

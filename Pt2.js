@@ -280,6 +280,7 @@ window.VisualManager = class VisualManager {
         this.initializedBunnyPlayers = new WeakSet();
         this.hlsInstances = new WeakMap();
         this.hlsLibraryPromise = null;
+        this.motionPlaybackTimeout = null;
     }
 
     updateDynamicVisuals(styleKey = this.instance.selectedStyle) {
@@ -306,6 +307,20 @@ window.VisualManager = class VisualManager {
 
         this.setBackgroundImage(document.getElementById('no-haze-visual'), styleAssets.noHaze);
         this.setBackgroundImage(document.getElementById('haze-visual'), styleAssets.haze);
+
+        this.ensureMotionVideosPlaying();
+        this.scheduleMotionPlaybackCheck();
+    }
+
+    scheduleMotionPlaybackCheck() {
+        if (this.motionPlaybackTimeout) {
+            clearTimeout(this.motionPlaybackTimeout);
+        }
+
+        this.motionPlaybackTimeout = setTimeout(() => {
+            this.motionPlaybackTimeout = null;
+            this.ensureMotionVideosPlaying();
+        }, 150);
     }
 
     preloadStyleAssets(styleKey, styleAssets = window.visualAssets[styleKey]) {
@@ -579,6 +594,140 @@ window.VisualManager = class VisualManager {
                 /* Autoplay may be blocked; status will update in loadeddata handler */
             });
         }
+    }
+
+    ensureMotionVideosPlaying() {
+        const motionSlide = document.querySelector('.question-slide[data-question="5"].active');
+        if (!motionSlide) {
+            return;
+        }
+
+        const players = motionSlide.querySelectorAll('[data-bunny-player-init]');
+        const futureDataState = (typeof HTMLMediaElement !== 'undefined' &&
+            typeof HTMLMediaElement.HAVE_FUTURE_DATA === 'number')
+            ? HTMLMediaElement.HAVE_FUTURE_DATA
+            : 3;
+
+        players.forEach((player) => {
+            const video = player.querySelector('video');
+            if (!video) {
+                return;
+            }
+
+            if (!player.isConnected) {
+                return;
+            }
+
+            const isActiveSlide = () => player.isConnected && !!player.closest('.question-slide[data-question="5"].active');
+
+            const clearRetry = () => {
+                if (player.__motionRetryTimeout) {
+                    clearTimeout(player.__motionRetryTimeout);
+                    player.__motionRetryTimeout = null;
+                }
+            };
+
+            const markLoading = () => {
+                if (player.getAttribute('data-player-status') !== 'playing') {
+                    player.setAttribute('data-player-status', 'loading');
+                }
+            };
+
+            const scheduleRetry = (delay = 250) => {
+                if (player.__motionRetryTimeout || !isActiveSlide()) {
+                    return;
+                }
+
+                player.__motionRetryTimeout = setTimeout(() => {
+                    player.__motionRetryTimeout = null;
+                    attemptPlay();
+                }, delay);
+            };
+
+            const attemptPlay = () => {
+                if (!isActiveSlide()) {
+                    clearRetry();
+                    return;
+                }
+
+                player.dataset.playerAutoplay = 'true';
+                markLoading();
+
+                if (video.readyState === 0) {
+                    try {
+                        video.load();
+                    } catch (error) {
+                        console.warn('Unable to trigger Bunny video load', error);
+                    }
+                }
+
+                const playPromise = video.play();
+                if (playPromise && typeof playPromise.then === 'function') {
+                    playPromise.then(() => {
+                        clearRetry();
+                        player.setAttribute('data-player-status', 'playing');
+                    }).catch(() => {
+                        if (!isActiveSlide()) {
+                            clearRetry();
+                            return;
+                        }
+
+                        if (!video.paused && !video.ended) {
+                            clearRetry();
+                            player.setAttribute('data-player-status', 'playing');
+                            return;
+                        }
+
+                        player.setAttribute('data-player-status', 'ready');
+                        scheduleRetry();
+                    });
+                } else if (video.paused) {
+                    scheduleRetry();
+                }
+            };
+
+            if (!video.paused && !video.ended) {
+                return;
+            }
+
+            if (player.__motionRetryTimeout) {
+                clearTimeout(player.__motionRetryTimeout);
+                player.__motionRetryTimeout = null;
+            }
+
+            if (player.__motionCanPlayHandler) {
+                video.removeEventListener('canplay', player.__motionCanPlayHandler);
+            }
+
+            const onCanPlay = () => {
+                video.removeEventListener('canplay', onCanPlay);
+                player.__motionCanPlayHandler = null;
+                attemptPlay();
+            };
+
+            player.__motionCanPlayHandler = onCanPlay;
+            video.addEventListener('canplay', onCanPlay);
+
+            if (player.__motionLoadedDataHandler) {
+                video.removeEventListener('loadeddata', player.__motionLoadedDataHandler);
+            }
+
+            const onLoadedData = () => {
+                video.removeEventListener('loadeddata', onLoadedData);
+                player.__motionLoadedDataHandler = null;
+                attemptPlay();
+            };
+
+            player.__motionLoadedDataHandler = onLoadedData;
+            video.addEventListener('loadeddata', onLoadedData);
+
+            if (video.readyState >= futureDataState) {
+                attemptPlay();
+            } else {
+                markLoading();
+                scheduleRetry(120);
+            }
+        });
     }
 };
 

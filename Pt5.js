@@ -81,6 +81,7 @@ class TypeformIntake {
         this.setupStyleSelection();
         this.photoManager.setupPhotoUploads();
         this.photoManager.setupPhotoButtons();
+        this.resetInitialSlideState();
         this.storageManager.loadSavedData();
         this.navigationManager.updateProgress();
         this.navigationManager.updateCounter();
@@ -89,7 +90,9 @@ class TypeformIntake {
 
         const startBtn = document.getElementById('startBtn');
         if (startBtn) {
-            startBtn.addEventListener('click', () => {
+            startBtn.setAttribute('type', 'button');
+            startBtn.addEventListener('click', (event) => {
+                event.preventDefault();
                 this.navigationManager.nextQuestion();
             });
         }
@@ -114,10 +117,33 @@ class TypeformIntake {
         });
     }
 
+    resetInitialSlideState() {
+        this.currentQuestion = 0;
+        this.slides.forEach((slide) => {
+            slide.classList.remove('active', 'prev', 'next');
+
+            const questionNumber = parseInt(slide.dataset.question, 10);
+            if (!Number.isNaN(questionNumber) && questionNumber === 0) {
+                slide.classList.add('active');
+            }
+        });
+
+        const backBtn = document.getElementById('backBtn');
+        if (backBtn) {
+            backBtn.style.display = 'none';
+        }
+
+        const nextBtn = document.getElementById('nextBtn');
+        if (nextBtn) {
+            nextBtn.style.display = 'none';
+            nextBtn.disabled = true;
+        }
+    }
+
     showSequentialStep(questionIndex, stepIndex) {
         const seq = this.sequentialQuestions[questionIndex];
         if (!seq) return;
-        
+
         const questionSlide = document.querySelector(`.question-slide[data-question="${questionIndex}"]`);
         if (!questionSlide) return;
         
