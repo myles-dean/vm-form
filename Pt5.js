@@ -81,6 +81,7 @@ class TypeformIntake {
         this.setupStyleSelection();
         this.photoManager.setupPhotoUploads();
         this.photoManager.setupPhotoButtons();
+        this.resetInitialSlideState();
         this.storageManager.loadSavedData();
         this.navigationManager.updateProgress();
         this.navigationManager.updateCounter();
@@ -111,6 +112,17 @@ class TypeformIntake {
 
                 this.visualManager.updateDynamicVisuals(style);
             });
+        });
+    }
+		resetInitialSlideState() {
+        this.currentQuestion = 0;
+        this.slides.forEach((slide) => {
+            slide.classList.remove('active', 'prev', 'next');
+
+            const questionNumber = parseInt(slide.dataset.question, 10);
+            if (!Number.isNaN(questionNumber) && questionNumber === 0) {
+                slide.classList.add('active');
+            }
         });
     }
 
