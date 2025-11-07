@@ -69,7 +69,7 @@ class TypeformIntake {
         return sequential;
     }
 
-    init() {
+     init() {
         this.eventManager.setupAllEventListeners();
         this.navigationManager.setupMasterNavigator();
         this.dimensionManager.setupDimensionSliders();
@@ -90,7 +90,9 @@ class TypeformIntake {
 
         const startBtn = document.getElementById('startBtn');
         if (startBtn) {
-            startBtn.addEventListener('click', () => {
+            startBtn.setAttribute('type', 'button');
+            startBtn.addEventListener('click', (event) => {
+                event.preventDefault();
                 this.navigationManager.nextQuestion();
             });
         }
@@ -114,7 +116,8 @@ class TypeformIntake {
             });
         });
     }
-		resetInitialSlideState() {
+
+    resetInitialSlideState() {
         this.currentQuestion = 0;
         this.slides.forEach((slide) => {
             slide.classList.remove('active', 'prev', 'next');
@@ -124,12 +127,23 @@ class TypeformIntake {
                 slide.classList.add('active');
             }
         });
+
+        const backBtn = document.getElementById('backBtn');
+        if (backBtn) {
+            backBtn.style.display = 'none';
+        }
+
+        const nextBtn = document.getElementById('nextBtn');
+        if (nextBtn) {
+            nextBtn.style.display = 'none';
+            nextBtn.disabled = true;
+        }
     }
 
     showSequentialStep(questionIndex, stepIndex) {
         const seq = this.sequentialQuestions[questionIndex];
         if (!seq) return;
-        
+
         const questionSlide = document.querySelector(`.question-slide[data-question="${questionIndex}"]`);
         if (!questionSlide) return;
         
